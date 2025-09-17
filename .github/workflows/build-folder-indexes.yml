@@ -1,0 +1,54 @@
+      - name: Generate index.html files
+        run: |
+          set -euo pipefail
+
+          gen_index () {
+            local dir="$1"
+            [ -d "$dir" ] || return 0
+
+            # Collect *.xml files
+            mapfile -t files < <(printf '%s\n' "$dir"/*.xml 2>/dev/null | grep -E '\.xml$' || true)
+
+            mkdir -p "$dir"
+
+            # Start index.html
+            cat > "$dir/index.html" <<'HTML'
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ISPDB listing</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    h1 { margin-bottom: .5rem; }
+    .hint { color: #555; margin-bottom: 1rem; }
+    ul { line-height: 1.6; }
+    code { background: #f6f8fa; padding: .1rem .3rem; border-radius: .3rem; }
+  </style>
+</head>
+<body>
+  <h1>ISPDB directory</h1>
+  <p class="hint">Static listing of available domain XML files.</p>
+  <ul>
+HTML
+
+            if [ "${#files[@]}" -gt 0 ]; then
+              for path in "${files[@]}"; do
+                file="$(basename "$path")"
+                size="$(wc -c < "$path" | tr -d ' ')"
+                echo "    <li><a href=\"$file\">$file</a> <small><code>${size} bytes</code></small></li>" >> "$dir/index.html"
+              done
+            else
+              echo "    <li><em>No XML files found.</em></li>" >> "$dir/index.html"
+            fi
+
+            cat >> "$dir/index.html" <<'HTML'
+  </ul>
+</body>
+</html>
+HTML
+          }
+
+          # Generate for one or both directories depending on your layout
+          gen_index autoconfig/ispdb
+          gen_index autoconfig/v1.1
