@@ -1,3 +1,20 @@
+name: Build folder index pages
+
+on:
+  push:
+    branches: [ master ]   # <-- change to 'main' if that's your default
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-indexes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
       - name: Generate index.html files
         run: |
           set -euo pipefail
@@ -52,3 +69,11 @@ HTML
           # Generate for one or both directories depending on your layout
           gen_index autoconfig/ispdb
           gen_index autoconfig/v1.1
+
+      - name: Commit & push index pages
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(pages): update folder index pages"
+          file_pattern: |
+            autoconfig/ispdb/index.html
+            autoconfig/v1.1/index.html
