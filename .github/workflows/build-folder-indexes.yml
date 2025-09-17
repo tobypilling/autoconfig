@@ -3,8 +3,8 @@ name: Build folder index pages
 on:
   push:
     branches:
-      - master        # change to 'main' if that's your default
-  workflow_dispatch:
+      - master      # change to 'main' if needed
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -16,62 +16,71 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Generate index.html files (no heredocs)
+      - name: Generate index.html files
+        shell: bash
         run: |
           set -euo pipefail
+          shopt -s nullglob
 
           gen_index () {
-            dir="$1"
-            [ -d "$dir" ] || return 0
-            mkdir -p "$dir"
+            d="$1"
+            mkdir -p "$d"
+            out="$d/index.html"
 
-            # Gather .xml files (may be empty)
-            mapfile -t files < <(printf '%s\n' "$dir"/*.xml 2>/dev/null | grep -E '\.xml$' || true)
-
-            out="$dir/index.html"
+            # collect XMLs in this directory (non-recursive)
+            xmls=( "$d"/*.xml )
             : > "$out"
-
-            printf '%s\n' '<!doctype html>'                                   >> "$out"
-            printf '%s\n' '<html>'                                            >> "$out"
-            printf '%s\n' '<head>'                                            >> "$out"
-            printf '%s\n' '  <meta charset="utf-8">'                          >> "$out"
-            printf '%s\n' '  <title>ISPDB listing</title>'                    >> "$out"
-            printf '%s\n' '  <style>'                                         >> "$out"
+            printf '%s\n' '<!doctype html>' >> "$out"
+            printf '%s\n' '<html>' >> "$out"
+            printf '%s\n' '<head>' >> "$out"
+            printf '%s\n' '  <meta charset="utf-8">' >> "$out"
+            printf '%s\n' '  <title>ISPDB listing</title>' >> "$out"
+            printf '%s\n' '  <style>' >> "$out"
             printf '%s\n' '    body { font-family: system-ui, sans-serif; margin: 2rem; }' >> "$out"
-            printf '%s\n' '    h1 { margin-bottom: .5rem; }'                  >> "$out"
-            printf '%s\n' '    .hint { color: #555; margin-bottom: 1rem; }'   >> "$out"
-            printf '%s\n' '    ul { line-height: 1.6; }'                      >> "$out"
+            printf '%s\n' '    h1 { margin-bottom: .5rem; }' >> "$out"
+            printf '%s\n' '    .hint { color: #555; margin-bottom: 1rem; }' >> "$out"
+            printf '%s\n' '    ul { line-height: 1.6; }' >> "$out"
             printf '%s\n' '    code { background: #f6f8fa; padding: .1rem .3rem; border-radius: .3rem; }' >> "$out"
-            printf '%s\n' '  </style>'                                        >> "$out"
-            printf '%s\n' '</head>'                                           >> "$out"
-            printf '%s\n' '<body>'                                            >> "$out"
-            printf '%s\n' '  <h1>ISPDB directory</h1>'                         >> "$out"
+            printf '%s\n' '  </style>' >> "$out"
+            printf '%s\n' '</head>' >> "$out"
+            printf '%s\n' '<body>' >> "$out"
+            printf '%s\n' "  <h1>Index of /${d#./}</h1>" >> "$out"
             printf '%s\n' '  <p class="hint">Static listing of available domain XML files.</p>' >> "$out"
-            printf '%s\n' '  <ul>'                                            >> "$out"
+            printf '%s\n' '  <ul>' >> "$out"
 
-            if [ "${#files[@]}" -gt 0 ]; then
-              for path in "${files[@]}"; do
-                file="$(basename "$path")"
-                size="$(wc -c < "$path" | tr -d ' ')"
-                printf '    <li><a href="%s">%s</a> <small><code>%s bytes</code></small></li>\n' "$file" "$file" "$size" >> "$out"
+            if [ "${#xmls[@]}" -gt 0 ]; then
+              for p in "${xmls[@]}"; do
+                f="${p##*/}"
+                size="$(wc -c < "$p" | tr -d ' ')"
+                printf '    <li><a href="%s">%s</a> <small><code>%s bytes</code></small></li>\n' "$f" "$f" "$size" >> "$out"
               done
             else
-              printf '%s\n' '    <li><em>No XML files found.</em></li>'       >> "$out"
+              printf '%s\n' '    <li><em>No XML files found.</em></li>' >> "$out"
             fi
 
-            printf '%s\n' '  </ul>'                                           >> "$out"
-            printf '%s\n' '</body>'                                           >> "$out"
-            printf '%s\n' '</html>'                                           >> "$out"
+            printf '%s\n' '  </ul>' >> "$out"
+            printf '%s\n' '</body>' >> "$out"
+            printf '%s\n' '</html>' >> "$out"
           }
 
-          # Generate for whichever layout(s) you use
-          gen_index autoconfig/ispdb
-          gen_index autoconfig/v1.1
+          # find every directory that contains at least one .xml file
+          dirs="$(find . -type f -name '*.xml' -printf '%h\n' | sort -u)"
+
+          echo "XML directories detected:"
+          echo "$dirs" | sed 's/^/ - /'
+
+          # generate index for each detected directory
+          while IFS= read -r d; do
+            [ -n "$d" ] && gen_index "$d"
+          done <<< "$dirs"
+
+          # also build common ISPDB paths if they exist
+          for d in autoconfig/ispdb autoconfig/v1.1 ispdb v1.1; do
+            [ -d "$d" ] && gen_index "$d"
+          done
 
       - name: Commit & push index pages
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore(pages): update folder index pages"
-          file_pattern: |
-            autoconfig/ispdb/index.html
-            autoconfig/v1.1/index.html
+          file_pattern: "**/index.html"
